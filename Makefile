@@ -1,4 +1,4 @@
-.PHONY: install lint typecheck test check
+.PHONY: install lint typecheck test check up down
 
 install:
 	uv sync
@@ -14,3 +14,9 @@ test:
 	uv run pytest
 
 check: lint typecheck test
+
+up:
+	docker compose up --build -d
+
+down:
+	docker compose down

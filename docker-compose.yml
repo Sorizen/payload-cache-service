@@ -1,3 +1,10 @@
+x-app-environment: &app-environment
+  POSTGRES_HOST: db
+  POSTGRES_PORT: 5432
+  POSTGRES_USER: ${POSTGRES_USER:-payload_cache}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-payload_cache}
+  POSTGRES_DB: ${POSTGRES_DB:-payload_cache}
+
 services:
   db:
     image: postgres:17-alpine
@@ -9,6 +16,33 @@ services:
       - '${POSTGRES_PORT:-5435}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  migrate:
+    build: .
+    command: ['alembic', 'upgrade', 'head']
+    environment: *app-environment
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build: .
+    environment: *app-environment
+    ports:
+      - '${API_PORT:-8000}:8000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://localhost:8000/health")']
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
 volumes:
   postgres_data:
