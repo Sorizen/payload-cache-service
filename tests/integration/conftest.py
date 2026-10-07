@@ -1,8 +1,12 @@
+import threading
+import time
 from collections.abc import AsyncIterator, Iterator
 
 import pytest
+import uvicorn
 from alembic import command
 from alembic.config import Config
+from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
@@ -21,6 +25,8 @@ from tests.fakes import CountingTransformer
 
 POSTGRES_IMAGE = 'postgres:17-alpine'
 POSTGRES_DRIVER = 'asyncpg'
+LOCAL_HOST = '127.0.0.1'
+STARTUP_POLL_SECONDS = 0.05
 TABLES = ('payloads', 'transformations')
 
 
@@ -54,9 +60,7 @@ def transformer() -> CountingTransformer:
 
 
 @pytest.fixture
-async def client(
-    engine: AsyncEngine, transformer: CountingTransformer
-) -> AsyncIterator[AsyncClient]:
+def api_app(engine: AsyncEngine, transformer: CountingTransformer) -> Iterator[FastAPI]:
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
     async def override_get_db() -> AsyncIterator[AsyncSession]:
@@ -65,6 +69,24 @@ async def client(
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_transformer] = lambda: transformer
-    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
-        yield client
+    yield app
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+async def client(api_app: FastAPI) -> AsyncIterator[AsyncClient]:
+    async with AsyncClient(transport=ASGITransport(app=api_app), base_url='http://test') as client:
+        yield client
+
+
+@pytest.fixture
+def live_server_url(api_app: FastAPI) -> Iterator[str]:
+    server = uvicorn.Server(uvicorn.Config(api_app, host=LOCAL_HOST, port=0, log_level='warning'))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    while not server.started:
+        time.sleep(STARTUP_POLL_SECONDS)
+    port = server.servers[0].sockets[0].getsockname()[1]
+    yield f'http://{LOCAL_HOST}:{port}'
+    server.should_exit = True
+    thread.join()

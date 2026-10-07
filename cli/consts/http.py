@@ -1,0 +1,4 @@
+PAYLOAD_PATH = '/payload'
+REQUEST_TIMEOUT_SECONDS = 60.0
+HTTP_SCHEMES = ('http://', 'https://')
+ERROR_BODY_LIMIT = 500
