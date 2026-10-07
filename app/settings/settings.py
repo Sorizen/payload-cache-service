@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = 'payload_cache'
     POSTGRES_DB: str = 'payload_cache'
 
+    TRANSFORMER_LATENCY_SECONDS: float = 1.0
+    TRANSFORMER_MAX_CONCURRENCY: int = 10
+
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:
         return str(
